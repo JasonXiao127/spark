@@ -29,17 +29,16 @@ function App() {
       const res = await axios.get<Device[]>('/api/devices')
       setDevices(res.data)
     } catch (err) {
-      showMessage('Failed to load devices', true)
+      showMessage('Failed to load devices')
     } finally {
       setLoading(false)
     }
   }
 
-  const showMessage = (msg: string, isError = false) => {
-    setMessage(msg)
-    setTimeout(() => setMessage(''), 3000)
-  }
-
+  const showMessage = (msg: string) => { 
+  setMessage(msg)
+  setTimeout(() => setMessage(''), 3000)
+}
   useEffect(() => {
     fetchDevices()
   }, [])
@@ -47,7 +46,7 @@ function App() {
   const handleAddDevice = async (e: FormEvent) => {
     e.preventDefault()
     if (!form.name || !form.mac_address || !form.ip_address) {
-      showMessage('All fields are required', true)
+      showMessage('All fields are required')
       return
     }
     try {
@@ -57,7 +56,7 @@ function App() {
       fetchDevices()
     } catch (err: any) {
       const detail = err.response?.data?.detail || 'Failed to add device'
-      showMessage(detail, true)
+      showMessage(detail)
     }
   }
 
@@ -67,7 +66,7 @@ function App() {
       showMessage(res.data.detail)
     } catch (err: any) {
       const detail = err.response?.data?.detail || 'Wake failed'
-      showMessage(detail, true)
+      showMessage(detail)
     }
   }
 
@@ -79,7 +78,7 @@ function App() {
       fetchDevices()
     } catch (err: any) {
       const detail = err.response?.data?.detail || 'Delete failed'
-      showMessage(detail, true)
+      showMessage(detail)
     }
   }
 

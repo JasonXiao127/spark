@@ -4,7 +4,7 @@ WORKDIR /app/frontend
 
 # Install dependencies (cached layer – won't change unless package files change)
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm ci
+RUN npm install
 
 # Copy only the necessary source files (no node_modules from host)
 COPY frontend/index.html .
