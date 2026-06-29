@@ -4,7 +4,7 @@ services:
   lantern:
     build: .
     ports:
-      - "8080:8000"
+      - "8282:8282"
     volumes:
       - ./data:/app/data   # Persists the SQLite database across container restarts
     restart: unless-stopped
