@@ -2,7 +2,8 @@ from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from wakeonlan import wake
-
+from fastapi.staticfiles import StaticFiles
+import os
 
 import models
 from database import engine, get_db, Base
@@ -66,4 +67,7 @@ def wake_device(device_id: int, db: Session = Depends(get_db)):
         return {"detail": f"Magic packet sent to {db_device.name} ({db_device.mac_address})"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send WoL packet: {str(e)}")
-    
+
+
+if os.path.exists("dist"):
+    app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
