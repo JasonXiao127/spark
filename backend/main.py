@@ -23,8 +23,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from fastapi.staticfiles import StaticFiles
-app.mount("/", StaticFiles(directory="dist", html=True), name="static")
+
 # ------------------- API Endpoints -------------------
 
 @app.get("/api/devices", response_model=list[Device])
