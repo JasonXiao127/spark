@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react'
+import { useState, useEffect, useRef, FormEvent } from 'react'
 import axios from 'axios'
 
 interface Device {
@@ -23,22 +23,27 @@ function App() {
     mac_address: '',
     ip_address: '',
   })
+  const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchDevices = async () => {
+    setLoading(true)
     try {
       const res = await axios.get<Device[]>('/api/devices')
       setDevices(res.data)
-    } catch (err) {
+    } catch {
       showMessage('Failed to load devices')
     } finally {
       setLoading(false)
     }
   }
 
-  const showMessage = (msg: string) => { 
-  setMessage(msg)
-  setTimeout(() => setMessage(''), 3000)
-}
+  const showMessage = (msg: string) => {
+    if (messageTimer.current) {
+      clearTimeout(messageTimer.current)
+    }
+    setMessage(msg)
+    messageTimer.current = setTimeout(() => setMessage(''), 3000)
+  }
   useEffect(() => {
     fetchDevices()
   }, [])
@@ -130,6 +135,7 @@ function App() {
           </label>
           <input
             placeholder="00:11:22:33:44:55"
+            title="Format: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX"
             value={form.mac_address}
             onChange={(e) => setForm({ ...form, mac_address: e.target.value })}
           />
