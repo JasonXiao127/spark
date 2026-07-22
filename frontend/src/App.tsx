@@ -1,67 +1,115 @@
-import { useState, useEffect, useRef, FormEvent } from 'react'
-import axios from 'axios'
+import { useState, useEffect, useRef, FormEvent, useCallback } from 'react'
+import axios, { AxiosError } from 'axios'
 
 interface Device {
   id: number
   name: string
   mac_address: string
-  ip_address: string
 }
 
 interface DeviceForm {
   name: string
   mac_address: string
-  ip_address: string
+}
+
+interface ErrorResponse {
+  detail?: string
 }
 
 function App() {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState<boolean>(true)
+  const [submitting, setSubmitting] = useState<boolean>(false)
   const [message, setMessage] = useState<string>('')
   const [form, setForm] = useState<DeviceForm>({
     name: '',
     mac_address: '',
-    ip_address: '',
   })
   const messageTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const abortController = useRef<AbortController | null>(null)
 
-  const fetchDevices = async () => {
-    setLoading(true)
-    try {
-      const res = await axios.get<Device[]>('/api/devices')
-      setDevices(res.data)
-    } catch {
-      showMessage('Failed to load devices')
-    } finally {
-      setLoading(false)
+  // Cleanup timers and abort pending requests on unmount
+  useEffect(() => {
+    return () => {
+      if (messageTimer.current) {
+        clearTimeout(messageTimer.current)
+      }
+      if (abortController.current) {
+        abortController.current.abort()
+      }
     }
-  }
+  }, [])
 
-  const showMessage = (msg: string) => {
+  const showMessage = useCallback((msg: string) => {
     if (messageTimer.current) {
       clearTimeout(messageTimer.current)
     }
     setMessage(msg)
     messageTimer.current = setTimeout(() => setMessage(''), 3000)
-  }
+  }, [])
+
+  const fetchDevices = useCallback(async () => {
+    // Abort any in-flight request
+    if (abortController.current) {
+      abortController.current.abort()
+    }
+    abortController.current = new AbortController()
+
+    setLoading(true)
+    try {
+      const res = await axios.get<Device[]>('/api/devices', {
+        signal: abortController.current.signal,
+      })
+      setDevices(res.data)
+    } catch (err: unknown) {
+      if (err instanceof AxiosError && err.code === 'ERR_CANCELED') {
+        return // Ignore aborted requests
+      }
+      showMessage('Failed to load devices')
+    } finally {
+      setLoading(false)
+    }
+  }, [showMessage])
+
   useEffect(() => {
     fetchDevices()
-  }, [])
+  }, [fetchDevices])
+
+  const getErrorMessage = (err: unknown, fallback: string): string => {
+    if (err instanceof AxiosError) {
+      const data = err.response?.data as ErrorResponse | undefined
+      return data?.detail ?? fallback
+    }
+    if (err instanceof Error) {
+      return err.message
+    }
+    return fallback
+  }
 
   const handleAddDevice = async (e: FormEvent) => {
     e.preventDefault()
-    if (!form.name || !form.mac_address || !form.ip_address) {
-      showMessage('All fields are required')
+
+    // Trim all inputs
+    const trimmedForm: DeviceForm = {
+      name: form.name.trim(),
+      mac_address: form.mac_address.trim(),
+    }
+
+    if (!trimmedForm.name || !trimmedForm.mac_address) {
+      showMessage('Name and MAC address are required')
       return
     }
+
+    setSubmitting(true)
     try {
-      await axios.post('/api/devices', form)
+      await axios.post('/api/devices', trimmedForm)
       showMessage('Device added successfully')
-      setForm({ name: '', mac_address: '', ip_address: '' })
+      setForm({ name: '', mac_address: '' })
       fetchDevices()
-    } catch (err: any) {
-      const detail = err.response?.data?.detail || 'Failed to add device'
-      showMessage(detail)
+    } catch (err: unknown) {
+      showMessage(getErrorMessage(err, 'Failed to add device'))
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -69,9 +117,8 @@ function App() {
     try {
       const res = await axios.post(`/api/wake/${device.id}`)
       showMessage(res.data.detail)
-    } catch (err: any) {
-      const detail = err.response?.data?.detail || 'Wake failed'
-      showMessage(detail)
+    } catch (err: unknown) {
+      showMessage(getErrorMessage(err, 'Wake failed'))
     }
   }
 
@@ -81,9 +128,8 @@ function App() {
       await axios.delete(`/api/devices/${device.id}`)
       showMessage('Device deleted')
       fetchDevices()
-    } catch (err: any) {
-      const detail = err.response?.data?.detail || 'Delete failed'
-      showMessage(detail)
+    } catch (err: unknown) {
+      showMessage(getErrorMessage(err, 'Delete failed'))
     }
   }
 
@@ -113,7 +159,7 @@ function App() {
         onSubmit={handleAddDevice}
         style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr auto',
+          gridTemplateColumns: '1fr 1fr auto',
           gap: '0.75rem',
           marginBottom: '2rem',
           alignItems: 'end',
@@ -140,29 +186,21 @@ function App() {
             onChange={(e) => setForm({ ...form, mac_address: e.target.value })}
           />
         </div>
-        <div>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
-            IP Address
-          </label>
-          <input
-            placeholder="192.168.1.100"
-            value={form.ip_address}
-            onChange={(e) => setForm({ ...form, ip_address: e.target.value })}
-          />
-        </div>
         <button
           type="submit"
+          disabled={submitting}
           style={{
             padding: '0.5rem 1.25rem',
-            backgroundColor: '#1e88e5',
+            backgroundColor: submitting ? '#546e7a' : '#1e88e5',
             color: 'white',
             border: 'none',
             borderRadius: '6px',
             fontWeight: 600,
             height: 'fit-content',
+            cursor: submitting ? 'not-allowed' : 'pointer',
           }}
         >
-          Add Device
+          {submitting ? 'Adding…' : 'Add Device'}
         </button>
       </form>
 
@@ -188,7 +226,7 @@ function App() {
               <div style={{ flex: 1 }}>
                 <h3 style={{ fontWeight: 600 }}>{device.name}</h3>
                 <div style={{ fontSize: '0.85rem', color: '#aaa' }}>
-                  MAC: {device.mac_address} &nbsp;·&nbsp; IP: {device.ip_address}
+                  MAC: {device.mac_address}
                 </div>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem' }}>

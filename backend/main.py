@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from wakeonlan import wake
-from fastapi.staticfiles import StaticFiles
 import os
 
 import models
@@ -26,10 +28,12 @@ app.add_middleware(
 
 # ------------------- API Endpoints -------------------
 
+
 @app.get("/api/devices", response_model=list[Device])
 def get_all_devices(db: Session = Depends(get_db)):
     devices = db.query(models.DeviceDB).all()
     return devices
+
 
 @app.post("/api/devices", response_model=Device, status_code=201)
 def add_device(device: DeviceCreate, db: Session = Depends(get_db)):
@@ -46,6 +50,7 @@ def add_device(device: DeviceCreate, db: Session = Depends(get_db)):
     db.refresh(db_device)
     return db_device
 
+
 @app.delete("/api/devices/{device_id}")
 def delete_device(device_id: int, db: Session = Depends(get_db)):
     db_device = db.query(models.DeviceDB).filter(models.DeviceDB.id == device_id).first()
@@ -54,6 +59,7 @@ def delete_device(device_id: int, db: Session = Depends(get_db)):
     db.delete(db_device)
     db.commit()
     return {"detail": f"Device '{db_device.name}' deleted successfully"}
+
 
 @app.post("/api/wake/{device_id}")
 def wake_device(device_id: int, db: Session = Depends(get_db)):
@@ -68,5 +74,6 @@ def wake_device(device_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to send WoL packet: {str(e)}")
 
 
+# Mount frontend static files AFTER all API routes to avoid squashing 404s
 if os.path.exists("dist"):
     app.mount("/", StaticFiles(directory="dist", html=True), name="frontend")
