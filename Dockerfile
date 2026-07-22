@@ -1,10 +1,10 @@
 # Stage 1: Build the React frontend
-FROM node:18-alpine AS frontend-build
+FROM node:24-alpine AS frontend-build
 WORKDIR /app/frontend
 
 # Install dependencies (cached layer – won't change unless package files change)
 COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install
+RUN npm ci
 
 # Copy only the necessary source files (no node_modules from host)
 COPY frontend/index.html .
@@ -21,8 +21,8 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Install backend dependencies
-COPY backend/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # Copy backend code
 COPY backend/ .
@@ -31,7 +31,12 @@ COPY backend/ .
 COPY --from=frontend-build /app/frontend/dist ./dist
 
 # Create a persistent data directory for SQLite
-RUN mkdir -p /app/data
+RUN addgroup --system lantern \
+    && adduser --system --ingroup lantern lantern \
+    && mkdir -p /app/data \
+    && chown -R lantern:lantern /app
+
+USER lantern
 
 EXPOSE 8282
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8282"]

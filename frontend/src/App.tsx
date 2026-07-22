@@ -16,11 +16,22 @@ interface ErrorResponse {
   detail?: string
 }
 
+const API_KEY_STORAGE_KEY = 'lantern-api-key'
+
+function getStoredApiKey(): string {
+  try {
+    return window.sessionStorage.getItem(API_KEY_STORAGE_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 function App() {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [submitting, setSubmitting] = useState<boolean>(false)
   const [message, setMessage] = useState<string>('')
+  const [apiKey, setApiKey] = useState<string>(getStoredApiKey)
   const [form, setForm] = useState<DeviceForm>({
     name: '',
     mac_address: '',
@@ -49,16 +60,24 @@ function App() {
   }, [])
 
   const fetchDevices = useCallback(async () => {
+    if (!apiKey) {
+      setDevices([])
+      setLoading(false)
+      return
+    }
+
     // Abort any in-flight request
     if (abortController.current) {
       abortController.current.abort()
     }
-    abortController.current = new AbortController()
+    const controller = new AbortController()
+    abortController.current = controller
 
     setLoading(true)
     try {
       const res = await axios.get<Device[]>('/api/devices', {
-        signal: abortController.current.signal,
+        signal: controller.signal,
+        headers: { 'X-API-Key': apiKey },
       })
       setDevices(res.data)
     } catch (err: unknown) {
@@ -67,9 +86,11 @@ function App() {
       }
       showMessage('Failed to load devices')
     } finally {
-      setLoading(false)
+      if (abortController.current === controller) {
+        setLoading(false)
+      }
     }
-  }, [showMessage])
+  }, [apiKey, showMessage])
 
   useEffect(() => {
     fetchDevices()
@@ -77,6 +98,9 @@ function App() {
 
   const getErrorMessage = (err: unknown, fallback: string): string => {
     if (err instanceof AxiosError) {
+      if (err.response?.status === 401) {
+        return 'Invalid API key'
+      }
       const data = err.response?.data as ErrorResponse | undefined
       return data?.detail ?? fallback
     }
@@ -99,13 +123,19 @@ function App() {
       showMessage('Name and MAC address are required')
       return
     }
+    if (!apiKey) {
+      showMessage('Enter the API key first')
+      return
+    }
 
     setSubmitting(true)
     try {
-      await axios.post('/api/devices', trimmedForm)
+      await axios.post('/api/devices', trimmedForm, {
+        headers: { 'X-API-Key': apiKey },
+      })
       showMessage('Device added successfully')
       setForm({ name: '', mac_address: '' })
-      fetchDevices()
+      await fetchDevices()
     } catch (err: unknown) {
       showMessage(getErrorMessage(err, 'Failed to add device'))
     } finally {
@@ -115,7 +145,9 @@ function App() {
 
   const handleWake = async (device: Device) => {
     try {
-      const res = await axios.post(`/api/wake/${device.id}`)
+      const res = await axios.post(`/api/wake/${device.id}`, undefined, {
+        headers: { 'X-API-Key': apiKey },
+      })
       showMessage(res.data.detail)
     } catch (err: unknown) {
       showMessage(getErrorMessage(err, 'Wake failed'))
@@ -125,9 +157,11 @@ function App() {
   const handleDelete = async (device: Device) => {
     if (!window.confirm(`Delete "${device.name}"?`)) return
     try {
-      await axios.delete(`/api/devices/${device.id}`)
+      await axios.delete(`/api/devices/${device.id}`, {
+        headers: { 'X-API-Key': apiKey },
+      })
       showMessage('Device deleted')
-      fetchDevices()
+      await fetchDevices()
     } catch (err: unknown) {
       showMessage(getErrorMessage(err, 'Delete failed'))
     }
@@ -136,9 +170,36 @@ function App() {
   return (
     <div>
       <header style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 600 }}>🔦 Lantern</h1>
-        <p style={{ color: '#aaa' }}>Wake‑on‑LAN control panel</p>
+        <h1 style={{ fontSize: '2rem', fontWeight: 600 }}>Lantern</h1>
+        <p style={{ color: '#aaa' }}>Wake-on-LAN control panel</p>
       </header>
+
+      <div style={{ marginBottom: '1.5rem' }}>
+        <label htmlFor="api-key" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
+          API key
+        </label>
+        <input
+          id="api-key"
+          type="password"
+          autoComplete="off"
+          placeholder="Enter LANTERN_API_KEY"
+          value={apiKey}
+          onChange={(e) => {
+            const nextKey = e.target.value
+            setApiKey(nextKey)
+            try {
+              if (nextKey) {
+                window.sessionStorage.setItem(API_KEY_STORAGE_KEY, nextKey)
+              } else {
+                window.sessionStorage.removeItem(API_KEY_STORAGE_KEY)
+              }
+            } catch {
+              // Session storage can be unavailable in restrictive browser modes.
+            }
+          }}
+          style={{ width: '100%' }}
+        />
+      </div>
 
       {message && (
         <div
@@ -200,12 +261,12 @@ function App() {
             cursor: submitting ? 'not-allowed' : 'pointer',
           }}
         >
-          {submitting ? 'Adding…' : 'Add Device'}
+          {submitting ? 'Adding...' : 'Add Device'}
         </button>
       </form>
 
       {loading ? (
-        <p>Loading devices…</p>
+        <p>Loading devices...</p>
       ) : devices.length === 0 ? (
         <p style={{ color: '#888' }}>No devices saved yet.</p>
       ) : (

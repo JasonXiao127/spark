@@ -6,12 +6,15 @@ __pycache__/
 venv/
 
 # Node
+node_modules/
 frontend/node_modules/
 frontend/dist/
 
 # Database
 data/lantern.db
 data/
+dist/
+backend/__pycache__/
 
 # IDE
 .vscode/
@@ -22,3 +25,4 @@ data/
 # Environment
 .env
 .env.*
+!.env.example

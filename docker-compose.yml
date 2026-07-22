@@ -4,7 +4,11 @@ services:
   lantern:
     build: .
     ports:
-      - "8282:8282"
+      # Localhost by default; change the host address only when LAN access is intentional.
+      - "127.0.0.1:8282:8282"
+    environment:
+      LANTERN_API_KEY: "${LANTERN_API_KEY:?Set LANTERN_API_KEY in .env}"
+      LANTERN_CORS_ORIGINS: "${LANTERN_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
     volumes:
       - ./data:/app/data   # Persists the SQLite database across container restarts
     restart: unless-stopped
