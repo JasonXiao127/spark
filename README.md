@@ -41,10 +41,9 @@ Lantern solves that mess. It runs as a lightweight Docker container on your home
      lantern:
        image: maraudermarauder/lantern:latest # pulled from Docker Hub
        container_name: lantern
-       ports:
-         - "127.0.0.1:8282:8282" # change the left port if 8282 is taken on your machine
+       network_mode: host # required for Wake-on-LAN: broadcasts must leave via the host's real NIC; a bridge network swallows them (Linux only - see the Docker Desktop note below)
        environment:
-         LANTERN_API_KEY: ${LANTERN_API_KEY:-} # blank = auth disabled (localhost/Tailscale only); otherwise 32+ random chars
+         LANTERN_API_KEY: ${LANTERN_API_KEY:-} # blank = auth disabled (trusted VPN only); otherwise 32+ random chars - recommended since host networking exposes all interfaces
        volumes:
          - lantern_data:/app/data # Docker-managed volume: persists devices across restarts, no permission setup needed
          # Prefer a visible ./data folder on the host instead (easy backups)?
@@ -60,8 +59,10 @@ Lantern solves that mess. It runs as a lightweight Docker container on your home
 2. Choose how you want to secure it:
 
    - **No auth (default):** do nothing. With no `.env` file the key is blank
-     and authentication is disabled - fine when Lantern is only reachable via
-     localhost or a trusted VPN like Tailscale.
+     and authentication is disabled - fine when Lantern is reachable only via
+     a trusted VPN like Tailscale or an otherwise trusted LAN. Note that with
+     host networking the app listens on every interface of the host (not just
+     localhost), so setting a key is recommended on shared networks.
    - **With auth:** create a `.env` file next to the compose file containing a
      key generated with `python -c "import secrets; print(secrets.token_urlsafe(32))"`:
 
@@ -83,15 +84,16 @@ needs to be built. (If you cloned this repository instead, the same
 
 ### Important: Wake-on-LAN and Docker networking
 
-A UDP broadcast sent from a container on Docker''s default bridge network
-never reaches your LAN - magic packets die at the container boundary. What
-works, depending on where Lantern runs:
+A UDP broadcast sent from a container on Docker''s bridge network never
+reaches your LAN - magic packets die at the container boundary. The compose
+file in this repo therefore defaults to `network_mode: host`. What works,
+depending on where Lantern runs:
 
 | Deployment | Does WoL work? |
 | --- | --- |
 | Backend run directly on the host (`uvicorn main:app`) | Yes - works everywhere |
-| Docker on a **Linux** host with `network_mode: host` | Yes (add it to the compose file; see the comment in the repo''s `docker-compose.yml`) |
-| Docker bridge network (the compose default) | No - management only (add/delete devices) |
+| Docker on a **Linux** host with `network_mode: host` (the compose default) | Yes |
+| Docker bridge network | No - management only (add/delete devices) |
 | macvlan network (container gets its own LAN IP) | Yes - advanced option |
 
 On **Docker Desktop (Windows/macOS)**, `network_mode: host` does not reach the

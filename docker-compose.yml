@@ -2,10 +2,13 @@ services:
   lantern:
     image: maraudermarauder/lantern:latest # pulled from Docker Hub
     container_name: lantern
-    ports:
-      - "127.0.0.1:8282:8282" # change the left port if 8282 is taken on your machine
+    # Required for Wake-on-LAN: the magic packet is a UDP broadcast, and
+    # broadcasts from a bridge network never reach the physical LAN. Host
+    # networking sends it out through the host's real NIC instead.
+    # (Linux hosts only - see the Docker Desktop note in the README.)
+    network_mode: host
     environment:
-      LANTERN_API_KEY: ${LANTERN_API_KEY:-} # blank = auth disabled (localhost/Tailscale only); otherwise 32+ random chars
+      LANTERN_API_KEY: ${LANTERN_API_KEY:-} # blank = auth disabled (trusted VPN only); otherwise 32+ random chars. With host networking the app listens on ALL host interfaces, so a key is recommended.
     volumes:
       - lantern_data:/app/data # Docker-managed volume: persists devices across restarts, no permission setup needed
       # Prefer a visible ./data folder on the host instead (easy backups)?
