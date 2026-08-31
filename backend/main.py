@@ -22,8 +22,23 @@ from models import DeviceCreate, Device
 logger = logging.getLogger(__name__)
 
 LANTERN_API_KEY = os.environ.get("LANTERN_API_KEY", "").strip()
-if len(LANTERN_API_KEY) < 32:
-    raise RuntimeError("LANTERN_API_KEY must be set to at least 32 characters")
+# A blank (empty or whitespace-only) key is an explicit opt-in that disables
+# authentication entirely. This is meant for setups where Lantern is only
+# reachable over a trusted network - localhost, Tailscale, WireGuard, etc. -
+# where the attack surface of an unauthenticated instance is negligible.
+# Any non-blank key must still be 32+ characters.
+AUTH_DISABLED = LANTERN_API_KEY == ""
+if AUTH_DISABLED:
+    logger.warning(
+        "LANTERN_API_KEY is blank: API authentication is DISABLED. "
+        "Only do this when Lantern is reachable exclusively via localhost, "
+        "Tailscale, or another trusted private network."
+    )
+elif len(LANTERN_API_KEY) < 32:
+    raise RuntimeError(
+        "LANTERN_API_KEY must be set to at least 32 characters, "
+        "or left blank to disable authentication"
+    )
 
 # Pre-encoded once: secrets.compare_digest raises TypeError on non-ASCII str
 # inputs, and header values are latin-1 decoded (so a raw 0xE9 byte arrives as
@@ -78,6 +93,8 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def require_api_key(api_key: str | None = Security(api_key_header)) -> None:
+    if AUTH_DISABLED:
+        return
     if not api_key or not secrets.compare_digest(
         api_key.encode(), LANTERN_API_KEY_BYTES
     ):

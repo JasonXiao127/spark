@@ -65,12 +65,8 @@ function App() {
   }, [])
 
   const fetchDevices = useCallback(async () => {
-    if (!apiKey) {
-      setDevices([])
-      setLoading(false)
-      return
-    }
-
+    // Send the request even when the key field is empty: a blank server-side
+    // LANTERN_API_KEY disables auth, and the backend decides either way.
     // Abort any in-flight request
     if (abortController.current) {
       abortController.current.abort()
@@ -82,7 +78,7 @@ function App() {
     try {
       const res = await axios.get<Device[]>('/api/devices', {
         signal: controller.signal,
-        headers: { 'X-API-Key': apiKey },
+        headers: apiKey ? { 'X-API-Key': apiKey } : undefined,
       })
       setDevices(res.data)
     } catch (err: unknown) {
@@ -128,15 +124,11 @@ function App() {
       showMessage('Name and MAC address are required')
       return
     }
-    if (!apiKey) {
-      showMessage('Enter the API key first')
-      return
-    }
 
     setSubmitting(true)
     try {
       await axios.post('/api/devices', trimmedForm, {
-        headers: { 'X-API-Key': apiKey },
+        headers: apiKey ? { 'X-API-Key': apiKey } : undefined,
       })
       showMessage('Device added successfully')
       setForm({ name: '', mac_address: '' })

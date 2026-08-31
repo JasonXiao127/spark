@@ -16,7 +16,7 @@ Lantern solves that mess. It runs as a lightweight Docker container on your home
 
 * **One-click boot:** Trigger Wake-on-LAN magic packets instantly over broadcast UDP port 9.
 * **Simple device management:** Add, normalize, and save target devices by MAC address (multicast and broadcast MACs are rejected).
-* **Secured by default:** Every API call requires a 32+ character API key, compared in constant time; mutating endpoints are rate-limited.
+* **Secured by default:** Every API call requires a 32+ character API key, compared in constant time; mutating endpoints are rate-limited. (Auth can be deliberately disabled with a blank key for localhost/VPN-only setups.)
 * **Single-container deployment:** Built frontend and backend packaged into one minimal Docker image.
 * **Dark theme UI:** Quick, responsive interface built for desktop and mobile browsers.
 
@@ -96,7 +96,9 @@ machines.
 
 ## API Reference
 
-All endpoints except the liveness probe require the `X-API-Key` header.
+All endpoints except the liveness probe require the `X-API-Key` header,
+unless authentication was disabled with a blank `LANTERN_API_KEY` (see
+Security notes).
 
 | Endpoint | Method | Auth | Description |
 | --- | --- | --- | --- |
@@ -149,7 +151,7 @@ pull request.
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `LANTERN_API_KEY` | Yes | - | API key; must be at least 32 characters; required on every API call |
+| `LANTERN_API_KEY` | No | - (blank) | API key; if set, must be at least 32 characters and is required on every API call. A **blank** value disables authentication entirely - only safe when Lantern is bound to localhost or reachable solely via a trusted VPN like Tailscale |
 | `LANTERN_CORS_ORIGINS` | No | `http://localhost:5173,http://127.0.0.1:5173` | Extra browser origins allowed during development |
 | `LANTERN_DB_PATH` | No | `./data/lantern.db` | SQLite database location |
 
@@ -171,9 +173,15 @@ sudo chown 1000:1000 data    # or use a named volume instead of the bind mount
 
 ## Security notes
 
-- Every API endpoint except `/api/health` requires the `X-API-Key` header.
-  The app refuses to start without a 32+ character key, and the key is
-  compared in constant time.
+- Every API endpoint except `/api/health` requires the `X-API-Key` header,
+  unless authentication is disabled by leaving `LANTERN_API_KEY` blank
+  (empty or whitespace-only). Blank disables auth entirely: this is an
+  explicit opt-in for deployments where Lantern is reachable only over
+  localhost or a trusted VPN (Tailscale, WireGuard, ...), where the attack
+  surface of an open instance is negligible. When a key is set it must be
+  32+ characters, and it is compared in constant time.
+- Disabling auth does not disable rate limiting: mutating endpoints are
+  still capped at 30 requests per minute per source IP.
 - Mutating endpoints are rate-limited to 30 requests per minute per source IP
   (in-memory, per process; resets on restart).
 - Swagger / ReDoc / OpenAPI are disabled unconditionally - there is no
