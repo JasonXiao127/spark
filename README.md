@@ -34,13 +34,7 @@ Lantern solves that mess. It runs as a lightweight Docker container on your home
 
 ## Quick start (no clone needed)
 
-1. Generate an API key and keep it private:
-
-   ```
-   python -c "import secrets; print(secrets.token_urlsafe(32))"
-   ```
-
-2. In an empty folder, create a `docker-compose.yml` containing exactly this:
+1. In an empty folder, create a `docker-compose.yml` containing exactly this:
 
    ```yaml
    services:
@@ -50,17 +44,30 @@ Lantern solves that mess. It runs as a lightweight Docker container on your home
        ports:
          - "127.0.0.1:8282:8282" # change the left port if 8282 is taken on your machine
        environment:
-         LANTERN_API_KEY: ${LANTERN_API_KEY:?Create a .env file next to this one containing LANTERN_API_KEY with 32 or more random characters}
+         LANTERN_API_KEY: ${LANTERN_API_KEY:-} # blank = auth disabled (localhost/Tailscale only); otherwise 32+ random chars
        volumes:
-         - ./data:/app/data # persists your devices across restarts
+         - lantern_data:/app/data # Docker-managed volume: persists devices across restarts, no permission setup needed
+         # Prefer a visible ./data folder on the host instead (easy backups)?
+         # Comment out the line above, uncomment the one below, and on Linux run
+         # `mkdir -p data && sudo chown 1000:1000 data` before the first start.
+         # - ./data:/app/data
        restart: unless-stopped
+
+   volumes:
+     lantern_data:
    ```
 
-   and a `.env` file next to it containing:
+2. Choose how you want to secure it:
 
-   ```
-   LANTERN_API_KEY=paste-the-key-from-step-1-here
-   ```
+   - **No auth (default):** do nothing. With no `.env` file the key is blank
+     and authentication is disabled - fine when Lantern is only reachable via
+     localhost or a trusted VPN like Tailscale.
+   - **With auth:** create a `.env` file next to the compose file containing a
+     key generated with `python -c "import secrets; print(secrets.token_urlsafe(32))"`:
+
+     ```
+     LANTERN_API_KEY=paste-the-generated-key-here
+     ```
 
 3. Start it:
 
@@ -68,7 +75,7 @@ Lantern solves that mess. It runs as a lightweight Docker container on your home
    docker compose up -d
    ```
 
-4. Open http://127.0.0.1:8282 and paste the API key into the UI.
+4. Open http://127.0.0.1:8282. If you set an API key, paste it into the UI.
 
 That is the whole setup - the image is pulled from Docker Hub, so nothing
 needs to be built. (If you cloned this repository instead, the same
@@ -157,16 +164,30 @@ pull request.
 
 ---
 
-## Data persistence and permissions
+## Data persistence
 
-The compose file mounts `./data` into the container, which runs as a non-root
-user. On Linux hosts, if Docker creates `./data` as root, SQLite cannot create
-the database and the container will crash-loop on startup. Fix it before the
-first start:
+Your devices are stored in a SQLite database inside the `lantern_data`
+Docker volume (declared at the bottom of the compose file). Docker creates
+and manages it automatically, so there is nothing to set up and no
+permission issues on any host - and the data survives `docker compose down`,
+image upgrades, and container recreation. Only `docker compose down -v`
+(or deleting the volume) erases it.
+
+Back up the devices:
+
+```
+docker run --rm -v lantern_data:/data -v "$PWD:/backup" alpine \
+  tar czf /backup/lantern-data.tar.gz -C /data .
+```
+
+Prefer a visible `./data` folder on the host instead (some people find plain
+files easier to back up)? Swap the volume line in the compose file for
+`- ./data:/app/data` (see the comment there). On Linux hosts you must then
+pre-create the folder with the right owner before the first start:
 
 ```
 mkdir -p data
-sudo chown 1000:1000 data    # or use a named volume instead of the bind mount
+sudo chown 1000:1000 data
 ```
 
 ---

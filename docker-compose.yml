@@ -7,5 +7,12 @@ services:
     environment:
       LANTERN_API_KEY: ${LANTERN_API_KEY:-} # blank = auth disabled (localhost/Tailscale only); otherwise 32+ random chars
     volumes:
-      - ./data:/app/data # persists your devices across restarts
+      - lantern_data:/app/data # Docker-managed volume: persists devices across restarts, no permission setup needed
+      # Prefer a visible ./data folder on the host instead (easy backups)?
+      # Comment out the line above, uncomment the one below, and on Linux run
+      # `mkdir -p data && sudo chown 1000:1000 data` before the first start.
+      # - ./data:/app/data
     restart: unless-stopped
+
+volumes:
+  lantern_data:
