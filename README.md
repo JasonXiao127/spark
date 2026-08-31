@@ -32,7 +32,7 @@ Lantern solves that mess. It runs as a lightweight Docker container on your home
 
 ---
 
-## Quick start (Docker)
+## Quick start (no clone needed)
 
 1. Generate an API key and keep it private:
 
@@ -40,7 +40,23 @@ Lantern solves that mess. It runs as a lightweight Docker container on your home
    python -c "import secrets; print(secrets.token_urlsafe(32))"
    ```
 
-2. Create a `.env` file next to `docker-compose.yml`:
+2. In an empty folder, create a `docker-compose.yml` containing exactly this:
+
+   ```yaml
+   services:
+     lantern:
+       image: maraudermarauder/lantern:latest # pulled from Docker Hub
+       container_name: lantern
+       ports:
+         - "127.0.0.1:8282:8282" # change the left port if 8282 is taken on your machine
+       environment:
+         LANTERN_API_KEY: ${LANTERN_API_KEY:?Create a .env file next to this one containing LANTERN_API_KEY with 32 or more random characters}
+       volumes:
+         - ./data:/app/data # persists your devices across restarts
+       restart: unless-stopped
+   ```
+
+   and a `.env` file next to it containing:
 
    ```
    LANTERN_API_KEY=paste-the-key-from-step-1-here
@@ -54,9 +70,9 @@ Lantern solves that mess. It runs as a lightweight Docker container on your home
 
 4. Open http://127.0.0.1:8282 and paste the API key into the UI.
 
-The compose file pulls `maraudermarauder/lantern:latest` from Docker Hub
-(linux/amd64). To build the image locally instead - for example on ARM -
-uncomment `build: .` in `docker-compose.yml` (and comment out `image:`).
+That is the whole setup - the image is pulled from Docker Hub, so nothing
+needs to be built. (If you cloned this repository instead, the same
+`docker-compose.yml` is already in the repo root, so step 2 is done for you.)
 
 ### Important: Wake-on-LAN and Docker networking
 
@@ -67,7 +83,7 @@ works, depending on where Lantern runs:
 | Deployment | Does WoL work? |
 | --- | --- |
 | Backend run directly on the host (`uvicorn main:app`) | Yes - works everywhere |
-| Docker on a **Linux** host with `network_mode: host` | Yes (see the comment block at the bottom of `docker-compose.yml`) |
+| Docker on a **Linux** host with `network_mode: host` | Yes (add it to the compose file; see the comment in the repo''s `docker-compose.yml`) |
 | Docker bridge network (the compose default) | No - management only (add/delete devices) |
 | macvlan network (container gets its own LAN IP) | Yes - advanced option |
 
@@ -84,7 +100,7 @@ All endpoints except the liveness probe require the `X-API-Key` header.
 
 | Endpoint | Method | Auth | Description |
 | --- | --- | --- | --- |
-| `/api/health` | `GET` | No | Liveness probe used by the compose healthcheck |
+| `/api/health` | `GET` | No | Liveness probe |
 | `/api/devices` | `GET` | Yes | List all saved devices |
 | `/api/devices` | `POST` | Yes | Add a new device (`{ "name": "...", "mac_address": "..." }`); duplicates return `409` |
 | `/api/devices/{id}` | `DELETE` | Yes | Remove a device |
@@ -141,10 +157,10 @@ pull request.
 
 ## Data persistence and permissions
 
-`docker-compose.yml` mounts `./data` into the container, which runs as a
-non-root user. On Linux hosts, if Docker creates `./data` as root, SQLite
-cannot create the database and the container will crash-loop on startup.
-Fix it before the first start:
+The compose file mounts `./data` into the container, which runs as a non-root
+user. On Linux hosts, if Docker creates `./data` as root, SQLite cannot create
+the database and the container will crash-loop on startup. Fix it before the
+first start:
 
 ```
 mkdir -p data
@@ -173,6 +189,6 @@ sudo chown 1000:1000 data    # or use a named volume instead of the bind mount
 
 - "Magic packet sent" means the UDP packet was written to the socket, not
   that the target machine actually powered on.
-- The published image is built for `linux/amd64`; on ARM, build locally via
-  the commented `build: .` in the compose file.
+- The published image is built for `linux/amd64`; on ARM, clone the repo and
+  run `docker compose up -d --build` (add `build: .` to the compose file).
 - The rate limiter is in-memory: it resets on restart and is per-process.
