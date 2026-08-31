@@ -1,8 +1,29 @@
+# Node
+node_modules
 frontend/node_modules
 frontend/dist
-node_modules
 dist
+
+# Python virtualenvs (root-anchored: .dockerignore patterns do NOT cascade
+# like .gitignore, so each location must be listed explicitly)
+backend/venv
+backend/.venv
+.venv
+
+# Python caches
 backend/__pycache__
+**/__pycache__
 *.pyc
+
+# Local data and secrets (a bare .env would only match the root .env, so use
+# **/.env to keep any backend/.env out of the image too)
+backend/data
+data
+**/.env
+
+# Not needed inside the image
 .git
-.env
+.agents
+backend/tests
+backend/conftest.py
+backend/requirements-dev.txt

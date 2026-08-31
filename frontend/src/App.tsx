@@ -26,10 +26,15 @@ function getStoredApiKey(): string {
   }
 }
 
+type BusyAction = 'wake' | 'delete'
+
 function App() {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [submitting, setSubmitting] = useState<boolean>(false)
+  // Per-device in-flight state so double clicks cannot fire extra wake
+  // packets or duplicate deletes (each row is disabled while busy).
+  const [busy, setBusy] = useState<{ id: number; action: BusyAction } | null>(null)
   const [message, setMessage] = useState<string>('')
   const [apiKey, setApiKey] = useState<string>(getStoredApiKey)
   const [form, setForm] = useState<DeviceForm>({
@@ -144,6 +149,7 @@ function App() {
   }
 
   const handleWake = async (device: Device) => {
+    setBusy({ id: device.id, action: 'wake' })
     try {
       const res = await axios.post(`/api/wake/${device.id}`, undefined, {
         headers: { 'X-API-Key': apiKey },
@@ -151,11 +157,14 @@ function App() {
       showMessage(res.data.detail)
     } catch (err: unknown) {
       showMessage(getErrorMessage(err, 'Wake failed'))
+    } finally {
+      setBusy(null)
     }
   }
 
   const handleDelete = async (device: Device) => {
     if (!window.confirm(`Delete "${device.name}"?`)) return
+    setBusy({ id: device.id, action: 'delete' })
     try {
       await axios.delete(`/api/devices/${device.id}`, {
         headers: { 'X-API-Key': apiKey },
@@ -164,20 +173,20 @@ function App() {
       await fetchDevices()
     } catch (err: unknown) {
       showMessage(getErrorMessage(err, 'Delete failed'))
+    } finally {
+      setBusy(null)
     }
   }
 
   return (
     <div>
-      <header style={{ marginBottom: '2rem' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 600 }}>Lantern</h1>
-        <p style={{ color: '#aaa' }}>Wake-on-LAN control panel</p>
+      <header className="app-header">
+        <h1>Lantern</h1>
+        <p>Wake-on-LAN control panel</p>
       </header>
 
-      <div style={{ marginBottom: '1.5rem' }}>
-        <label htmlFor="api-key" style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
-          API key
-        </label>
+      <div className="field">
+        <label htmlFor="api-key">API key</label>
         <input
           id="api-key"
           type="password"
@@ -197,70 +206,36 @@ function App() {
               // Session storage can be unavailable in restrictive browser modes.
             }
           }}
-          style={{ width: '100%' }}
         />
       </div>
 
       {message && (
-        <div
-          style={{
-            padding: '0.75rem 1rem',
-            marginBottom: '1.5rem',
-            borderRadius: '6px',
-            backgroundColor: '#263238',
-            color: '#b0bec5',
-            border: '1px solid #455a64',
-          }}
-        >
+        <div className="message" role="status">
           {message}
         </div>
       )}
 
-      <form
-        onSubmit={handleAddDevice}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr auto',
-          gap: '0.75rem',
-          marginBottom: '2rem',
-          alignItems: 'end',
-        }}
-      >
+      <form className="form-grid" onSubmit={handleAddDevice}>
         <div>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
-            Name
-          </label>
+          <label htmlFor="device-name">Name</label>
           <input
+            id="device-name"
             placeholder="My PC"
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
         </div>
         <div>
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.9rem' }}>
-            MAC Address
-          </label>
+          <label htmlFor="device-mac">MAC Address</label>
           <input
+            id="device-mac"
             placeholder="00:11:22:33:44:55"
             title="Format: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX"
             value={form.mac_address}
             onChange={(e) => setForm({ ...form, mac_address: e.target.value })}
           />
         </div>
-        <button
-          type="submit"
-          disabled={submitting}
-          style={{
-            padding: '0.5rem 1.25rem',
-            backgroundColor: submitting ? '#546e7a' : '#1e88e5',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontWeight: 600,
-            height: 'fit-content',
-            cursor: submitting ? 'not-allowed' : 'pointer',
-          }}
-        >
+        <button type="submit" className="btn btn-add" disabled={submitting}>
           {submitting ? 'Adding...' : 'Add Device'}
         </button>
       </form>
@@ -268,54 +243,33 @@ function App() {
       {loading ? (
         <p>Loading devices...</p>
       ) : devices.length === 0 ? (
-        <p style={{ color: '#888' }}>No devices saved yet.</p>
+        <p className="empty">No devices saved yet.</p>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div className="device-list">
           {devices.map((device) => (
-            <div
-              key={device.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                backgroundColor: '#1e1e1e',
-                padding: '1rem',
-                borderRadius: '8px',
-                border: '1px solid #333',
-              }}
-            >
-              <div style={{ flex: 1 }}>
-                <h3 style={{ fontWeight: 600 }}>{device.name}</h3>
-                <div style={{ fontSize: '0.85rem', color: '#aaa' }}>
-                  MAC: {device.mac_address}
-                </div>
+            <div className="device-row" key={device.id}>
+              <div className="info">
+                <h3>{device.name}</h3>
+                <div className="mac">MAC: {device.mac_address}</div>
               </div>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <div className="actions">
                 <button
+                  className="btn btn-wake"
                   onClick={() => handleWake(device)}
-                  style={{
-                    padding: '0.4rem 1rem',
-                    backgroundColor: '#43a047',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    fontWeight: 600,
-                  }}
+                  disabled={busy !== null}
                 >
-                  Wake
+                  {busy !== null && busy.id === device.id && busy.action === 'wake'
+                    ? 'Waking...'
+                    : 'Wake'}
                 </button>
                 <button
+                  className="btn btn-delete"
                   onClick={() => handleDelete(device)}
-                  style={{
-                    padding: '0.4rem 1rem',
-                    backgroundColor: 'transparent',
-                    border: '1px solid #e53935',
-                    color: '#e53935',
-                    borderRadius: '6px',
-                    fontWeight: 600,
-                  }}
+                  disabled={busy !== null}
                 >
-                  Delete
+                  {busy !== null && busy.id === device.id && busy.action === 'delete'
+                    ? 'Deleting...'
+                    : 'Delete'}
                 </button>
               </div>
             </div>

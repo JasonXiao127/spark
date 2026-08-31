@@ -1,0 +1,4 @@
+# Test-only dependencies. Intentionally NOT hash-pinned and NOT installed in
+# the Docker image (the image uses requirements.lock with --require-hashes).
+pytest>=8.0,<9.0
+httpx>=0.27,<1.0

@@ -1,8 +1,7 @@
-version: "3.8"
-
 services:
   lantern:
-    build: .
+    image: maraudermarauder/lantern:latest # Pulls from Docker Hub; pin a version tag for production
+    # build: . # Uncomment to build the image locally instead (e.g. on ARM)
     ports:
       # Localhost by default; change the host address only when LAN access is intentional.
       - "127.0.0.1:8282:8282"
@@ -10,5 +9,30 @@ services:
       LANTERN_API_KEY: "${LANTERN_API_KEY:?Set LANTERN_API_KEY in .env}"
       LANTERN_CORS_ORIGINS: "${LANTERN_CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}"
     volumes:
-      - ./data:/app/data   # Persists the SQLite database across container restarts
+      - ./data:/app/data # Persists the SQLite database across container restarts
     restart: unless-stopped
+    healthcheck:
+      # python:3.11-slim ships neither curl nor wget, so probe with the stdlib.
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys,urllib.request; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8282/api/health', timeout=5).status == 200 else sys.exit(1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+# Wake-on-LAN from a container requires UDP broadcasts to reach your LAN,
+# which a Docker bridge network does NOT allow. On a LINUX host you can share
+# the host network instead: uncomment the two lines below and delete the
+# ports mapping above. The app then still binds to 127.0.0.1 only, while
+# magic packets go out on the real LAN.
+#
+# On Docker Desktop (Windows/macOS) host networking does not reach the
+# physical LAN either - run uvicorn on the host for waking (see README).
+#
+# network_mode: host
+# command: ["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8282"]

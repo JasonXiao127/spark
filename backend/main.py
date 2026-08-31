@@ -25,6 +25,12 @@ LANTERN_API_KEY = os.environ.get("LANTERN_API_KEY", "").strip()
 if len(LANTERN_API_KEY) < 32:
     raise RuntimeError("LANTERN_API_KEY must be set to at least 32 characters")
 
+# Pre-encoded once: secrets.compare_digest raises TypeError on non-ASCII str
+# inputs, and header values are latin-1 decoded (so a raw 0xE9 byte arrives as
+# a non-ASCII char). Comparing bytes keeps the check constant-time and returns
+# 401 instead of raising a 500 on odd header values.
+LANTERN_API_KEY_BYTES = LANTERN_API_KEY.encode()
+
 
 def _csv_env(name: str, default: str) -> list[str]:
     value = os.environ.get(name, default)
@@ -60,8 +66,9 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
+    # No 'unsafe-inline' needed: the frontend uses external stylesheets only.
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "default-src 'self'; script-src 'self'; style-src 'self'; "
         "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'"
     )
     return response
@@ -71,7 +78,9 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def require_api_key(api_key: str | None = Security(api_key_header)) -> None:
-    if not api_key or not secrets.compare_digest(api_key, LANTERN_API_KEY):
+    if not api_key or not secrets.compare_digest(
+        api_key.encode(), LANTERN_API_KEY_BYTES
+    ):
         raise HTTPException(
             status_code=401,
             detail="Authentication required",
@@ -104,6 +113,12 @@ def enforce_mutation_rate_limit(request: Request) -> None:
 # ------------------- API Endpoints -------------------
 
 
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    # Unauthenticated liveness probe for orchestrators (compose healthcheck).
+    return {"status": "ok"}
+
+
 @app.get("/api/devices", response_model=list[Device])
 def get_all_devices(
     db: Session = Depends(get_db),
@@ -120,12 +135,16 @@ def add_device(
     _: None = Depends(require_api_key),
     __: None = Depends(enforce_mutation_rate_limit),
 ):
-    # Check for duplicate MAC address
+    # Check for duplicate MAC address. 409 (Conflict) is the canonical status
+    # for a duplicate: both this pre-check and the IntegrityError race
+    # fallback below return it so the API contract stays consistent.
     existing = db.query(models.DeviceDB).filter(
         models.DeviceDB.mac_address == device.mac_address
     ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Device with this MAC address already exists")
+        raise HTTPException(
+            status_code=409, detail="Device with this MAC address already exists"
+        )
 
     db_device = models.DeviceDB(**device.model_dump())
     db.add(db_device)
